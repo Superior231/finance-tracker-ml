@@ -5,10 +5,12 @@ Menggunakan trained Random Forest model
 
 import os
 import json
+os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
 from typing import Dict, List
 from paddleocr import PaddleOCR
 from ml_receipt_parser import MLReceiptParser
 from colorama import Fore, Back, Style, init
+
 
 init(autoreset=True)
 
@@ -29,10 +31,12 @@ class ReceiptInferenceApp:
         print("Loading PaddleOCR...")
         self.ocr = PaddleOCR(
             text_detection_model_name="PP-OCRv5_mobile_det",
+            text_recognition_model_name="PP-OCRv5_mobile_rec",
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=False,
             text_det_unclip_ratio=1.2,                          # Diturunkan agar box tidak gampang nyambung
+            enable_mkldnn=True,                                 # Mengakselerasi komputasi pada CPU Intel/AMD
         )
         print(f"{Fore.GREEN}✓ PaddleOCR loaded{Style.RESET_ALL}")
         

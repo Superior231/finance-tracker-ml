@@ -2,6 +2,7 @@ numpy
 paddlepaddle==3.0.0
 paddleocr==3.3.2
 python-Levenshtein==0.27.3
+Flask
 scikit-learn
 matplotlib
 numpy

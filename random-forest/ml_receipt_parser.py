@@ -216,7 +216,8 @@ class MLReceiptParser:
             text_clean = text.strip()
             if not text_clean:
                 continue
-            box = boxes[i] if boxes and i < len(boxes) else [0,0,0,0]
+            # box = boxes[i] if boxes and i < len(boxes) else [0,0,0,0]
+            box = boxes[i] if len(boxes) > 0 and i < len(boxes) else [0, 0, 0, 0]
             score = scores[i] if scores and i < len(scores) else 1.0
             elements.append({
                 'index': i,
