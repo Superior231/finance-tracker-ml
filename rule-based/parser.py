@@ -26,7 +26,7 @@ class ReceiptParser:
                 - max_qty: quantity maksimum yang valid
         """
         self.config = config or {}
-        self.line_threshold = self.config.get('line_threshold', 0.6)
+        self.line_threshold = self.config.get('line_threshold', 5)
         self.fuzzy_threshold = self.config.get('fuzzy_threshold', 80)
         self.confidence_threshold = self.config.get('confidence_threshold', 0.6)
         self.ignore_patterns = {
