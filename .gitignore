@@ -4,4 +4,5 @@ temp_ocr
 output
 results
 annotations
+datasets/
 ground_truth
