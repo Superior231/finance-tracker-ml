@@ -5,6 +5,7 @@ Menggunakan trained Random Forest model
 
 import os
 import json
+import cv2
 os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
 from typing import Dict, List
 from paddleocr import PaddleOCR
@@ -64,6 +65,17 @@ class ReceiptInferenceApp:
         
         # Step 1: OCR
         print("Step 1: Running OCR...")
+        img = cv2.imread(image_path)
+
+        if img is None:
+            print(f"{Fore.RED}Cannot read image.{Style.RESET_ALL}")
+            return {
+                "status": "image_error",
+                "items": []
+            }
+
+        image_height, image_width = img.shape[:2]
+
         predict_results = self.ocr.predict(image_path)
         
         if not predict_results:
@@ -129,7 +141,9 @@ class ReceiptInferenceApp:
         if ocr_result is None or 'rec_texts' not in ocr_result:
             print(f"{Fore.RED}Error: Cannot extract OCR data from result object{Style.RESET_ALL}")
             return {'status': 'ocr_extraction_failed', 'items': []}
-        
+
+        ocr_result["image_width"] = image_width
+        ocr_result["image_height"] = image_height
         texts = ocr_result.get('rec_texts', [])
         print(f"{Fore.GREEN}✓ OCR completed: {len(texts)} text elements detected{Style.RESET_ALL}")
         

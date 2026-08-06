@@ -104,11 +104,16 @@ python -c "
 from paddleocr import PaddleOCR
 import os
 
+os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
+
 model = PaddleOCR(
     text_detection_model_name='PP-OCRv5_mobile_det',
+    text_recognition_model_name='PP-OCRv5_mobile_rec',
     use_doc_orientation_classify=False,
     use_doc_unwarping=False,
-    use_textline_orientation=False
+    use_textline_orientation=False,
+    text_det_unclip_ratio=1.2,
+    enable_mkldnn=True,
 )
 
 for img_file in os.listdir('datasets/train/'):
@@ -176,6 +181,33 @@ python app.py single img/nota1.jpg
 # Batch processing
 python app.py batch img/
 ```
+
+### 5. API
+
+API Endpoint:
+`/api/parse-receipt`
+
+Run API
+```bash
+python api.py
+```
+
+Run Ngrok (optional)
+```bash
+ngrok http --url=your-url-ngrok.ngrok-free.dev 5000
+```
+
+### 6. Run `index.html` in browser
+
+Sesuaikan dengan URL API
+```bash
+# Ngrok
+const API_URL = "https://your-url-ngrok.ngrok-free.dev/api/parse-receipt";
+
+# Localhost
+const API_URL = "http://localhost:5000/api/parse-receipt";
+```
+
 
 ## 📊 Features yang Digunakan
 

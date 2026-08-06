@@ -25,17 +25,19 @@ class PureFeatureExtractor:
     """
 
     def extract_features(
-        self,
-        element: dict,
-        prev_element: dict | None,
-        next_element: dict | None,
-        line_elements: list[dict]
-    ) -> dict:
+            self,
+            element: dict,
+            prev_element: dict | None,
+            next_element: dict | None,
+            line_elements: list[dict]
+        ) -> dict:
 
         text = element["text"]
+        img_w = max(element["image_width"], 1)
+        img_h = max(element["image_height"], 1)
 
         features = {
-            # Text Statistics
+            # Text Features
             "text_length": len(text),
             "num_words": len(text.split()),
             "num_digits": sum(c.isdigit() for c in text),
@@ -46,7 +48,7 @@ class PureFeatureExtractor:
             "alpha_ratio": sum(c.isalpha() for c in text) / max(len(text), 1),
             "upper_ratio": sum(c.isupper() for c in text) / max(len(text), 1),
 
-            # Layout Features
+            # Position Features
             "x_pos": element["x"],
             "y_pos": element["y"],
             "width": element["width"],
@@ -55,6 +57,24 @@ class PureFeatureExtractor:
             "center_y": element["center_y"],
             "aspect_ratio": element["width"] / max(element["height"], 1),
 
+            # Relative Position Features
+            "relative_x": element["x"] / img_w,
+            "relative_y": element["y"] / img_h,
+            "relative_x2": element["x2"] / img_w,
+            "relative_y2": element["y2"] / img_h,
+
+            "relative_center_x": element["center_x"] / img_w,
+            "relative_center_y": element["center_y"] / img_h,
+
+            "relative_width": element["width"] / img_w,
+            "relative_height": element["height"] / img_h,
+
+            "relative_dist_left": element["x"] / img_w,
+            "relative_dist_right": (img_w - element["x2"]) / img_w,
+
+            "relative_dist_top": element["y"] / img_h,
+            "relative_dist_bottom": (img_h - element["y2"]) / img_h,
+
             # Context Features
             "position_in_line": (
                 line_elements.index(element)
@@ -62,20 +82,37 @@ class PureFeatureExtractor:
             ),
             "line_length": len(line_elements),
 
+            # Distance to neighbors
             "dist_to_prev": (
                 abs(element["x"] - prev_element["x2"])
+                if prev_element else 0
+            ),
+            "relative_dist_prev": (
+                abs(element["x"] - prev_element["x2"]) / img_w
                 if prev_element else 0
             ),
             "dist_to_next": (
                 abs(next_element["x"] - element["x2"])
                 if next_element else 0
             ),
+            "relative_dist_next": (
+                abs(next_element["x"] - element["x2"]) / img_w
+                if next_element else 0
+            ),
             "y_diff_prev": (
                 abs(element["center_y"] - prev_element["center_y"])
                 if prev_element else 0
             ),
+            "relative_y_diff_prev": (
+                abs(element["center_y"] - prev_element["center_y"]) / img_h
+                if prev_element else 0
+            ),
             "y_diff_next": (
                 abs(element["center_y"] - next_element["center_y"])
+                if next_element else 0
+            ),
+            "relative_y_diff_next": (
+                abs(element["center_y"] - next_element["center_y"]) / img_h
                 if next_element else 0
             ),
 
@@ -99,6 +136,10 @@ class FeatureExtractor:
             r'^\d{1,3}[,\.]\d{3}[,\.]\d{3}$'
         ]
         self.qty_patterns = [r'^\d{1,3}$', r'^\d+x$', r'^x\d+$']
+
+        # Relative horizontal area boundaries
+        LEFT_AREA = 0.33
+        RIGHT_AREA = 0.66
         
         # Kata kunci untuk kategori
         self.product_keywords = [
@@ -115,8 +156,12 @@ class FeatureExtractor:
             'dana', 'ovo', 'gopay', 'ovo', 'shopeepay',
         ]
     
-    def extract_features(self, element: Dict, prev_element: Optional[Dict], 
-                        next_element: Optional[Dict], line_elements: List[Dict]) -> Dict:
+    def extract_features(
+            self, element: Dict,
+            prev_element: Optional[Dict], 
+            next_element: Optional[Dict],
+            line_elements: List[Dict]
+        ) -> Dict:
         """
         Ekstraksi fitur dari satu elemen OCR
         
@@ -129,9 +174,11 @@ class FeatureExtractor:
         """
         text = element['text']
         text_lower = text.lower()
+        img_w = max(element["image_width"], 1)
+        img_h = max(element["image_height"], 1)
         
         features = {
-            # Basic text features
+            # Text Features
             'text_length': len(text),
             'num_words': len(text.split()),
             'num_digits': sum(c.isdigit() for c in text),
@@ -141,7 +188,7 @@ class FeatureExtractor:
             'alpha_ratio': sum(c.isalpha() for c in text) / max(len(text), 1),
             'upper_ratio': sum(c.isupper() for c in text) / max(len(text), 1),
             
-            # Position features (normalized)
+            # Position Features
             'x_pos': element['x'],
             'y_pos': element['y'],
             'width': element['width'],
@@ -149,6 +196,28 @@ class FeatureExtractor:
             'center_x': element['center_x'],
             'center_y': element['center_y'],
             'aspect_ratio': element['width'] / max(element['height'], 1),
+
+            # Relative Position Features
+            "relative_x": element["x"] / img_w,
+            "relative_y": element["y"] / img_h,
+            "relative_x2": element["x2"] / img_w,
+            "relative_y2": element["y2"] / img_h,
+
+            "relative_center_x": element["center_x"] / img_w,
+            "relative_center_y": element["center_y"] / img_h,
+
+            "relative_width": element["width"] / img_w,
+            "relative_height": element["height"] / img_h,
+
+            "relative_dist_left": element["x"] / img_w,
+            "relative_dist_right": (img_w - element["x2"]) / img_w,
+
+            "relative_dist_top": element["y"] / img_h,
+            "relative_dist_bottom": (img_h - element["y2"]) / img_h,
+
+            "is_left_area": int(element["center_x"] < img_w * self.LEFT_AREA),
+            "is_middle_area": int(img_w * self.LEFT_AREA <= element["center_x"] <= img_w * self.RIGHT_AREA),
+            "is_right_area": int(element["center_x"] > img_w * self.RIGHT_AREA),
             
             # Pattern matching features
             'is_price_pattern': int(any(re.match(p, text.replace(',','').replace('.','')) 
@@ -173,10 +242,38 @@ class FeatureExtractor:
                                   if element in line_elements and len(line_elements) > 0 else False),
             
             # Distance to neighbors
-            'dist_to_prev': abs(element['x'] - prev_element['x2']) if prev_element else 0,
-            'dist_to_next': abs(next_element['x'] - element['x2']) if next_element else 0,
-            'y_diff_prev': abs(element['center_y'] - prev_element['center_y']) if prev_element else 0,
-            'y_diff_next': abs(element['center_y'] - next_element['center_y']) if next_element else 0,
+            "dist_to_prev": (
+                abs(element["x"] - prev_element["x2"])
+                if prev_element else 0
+            ),
+            "relative_dist_prev": (
+                abs(element["x"] - prev_element["x2"]) / img_w
+                if prev_element else 0
+            ),
+            "dist_to_next": (
+                abs(next_element["x"] - element["x2"])
+                if next_element else 0
+            ),
+            "relative_dist_next": (
+                abs(next_element["x"] - element["x2"]) / img_w
+                if next_element else 0
+            ),
+            "y_diff_prev": (
+                abs(element["center_y"] - prev_element["center_y"])
+                if prev_element else 0
+            ),
+            "relative_y_diff_prev": (
+                abs(element["center_y"] - prev_element["center_y"]) / img_h
+                if prev_element else 0
+            ),
+            "y_diff_next": (
+                abs(element["center_y"] - next_element["center_y"])
+                if next_element else 0
+            ),
+            "relative_y_diff_next": (
+                abs(element["center_y"] - next_element["center_y"]) / img_h
+                if next_element else 0
+            ),
             
             # OCR confidence
             'ocr_score': element['score'],
@@ -202,14 +299,23 @@ class MLReceiptParser:
         self.label_encoder = LabelEncoder()
         self.model = None
         self.feature_names = None
-        self.line_threshold = 15  # threshold untuk grouping baris
+        # self.line_threshold = 15  # threshold untuk grouping baris
+        self.line_threshold_min = 5    # floor px, ganti sesuai hasil kalibrasi kamu
+        self.line_threshold_mult = 0.5
         self.verbose = False  # Set True untuk debugging
         
         if model_path and os.path.exists(model_path):
             self.load_model(model_path)
     
-    def _prepare_elements(self, texts: List[str], boxes: List[List[int]], 
-                         scores: List[float]) -> List[Dict]:
+    def _prepare_elements(
+            self,
+            texts: List[str],
+            boxes: List[List[int]],
+            scores: List[float],
+            image_width: int,
+            image_height: int
+        ) -> List[Dict]:
+
         """Prepare OCR elements dengan metadata"""
         elements = []
         for i, text in enumerate(texts):
@@ -232,32 +338,61 @@ class MLReceiptParser:
                 'width': box[2] - box[0],
                 'height': box[3] - box[1],
                 'center_x': (box[0] + box[2]) / 2,
-                'center_y': (box[1] + box[3]) / 2
+                'center_y': (box[1] + box[3]) / 2,
+                'image_width': image_width,
+                'image_height': image_height,
             })
         return elements
     
+    # def _group_into_lines(self, elements: List[Dict]) -> List[List[Dict]]:
+    #     """Group elements ke dalam baris berdasarkan posisi Y"""
+    #     if not elements:
+    #         return []
+        
+    #     elements_sorted = sorted(elements, key=lambda x: x['y'])
+    #     lines = []
+    #     current_line = [elements_sorted[0]]
+        
+    #     for elem in elements_sorted[1:]:
+    #         prev_y = sum(e['center_y'] for e in current_line) / len(current_line)
+    #         if abs(elem['center_y'] - prev_y) <= self.line_threshold:
+    #             current_line.append(elem)
+    #         else:
+    #             current_line.sort(key=lambda x: x['x'])
+    #             lines.append(current_line)
+    #             current_line = [elem]
+        
+    #     if current_line:
+    #         current_line.sort(key=lambda x: x['x'])
+    #         lines.append(current_line)
+        
+    #     return lines
+
     def _group_into_lines(self, elements: List[Dict]) -> List[List[Dict]]:
-        """Group elements ke dalam baris berdasarkan posisi Y"""
+        """Group elements ke dalam baris berdasarkan posisi Y (adaptif, sama seperti rule-based)"""
         if not elements:
             return []
-        
+
         elements_sorted = sorted(elements, key=lambda x: x['y'])
         lines = []
         current_line = [elements_sorted[0]]
-        
+
         for elem in elements_sorted[1:]:
-            prev_y = sum(e['center_y'] for e in current_line) / len(current_line)
-            if abs(elem['center_y'] - prev_y) <= self.line_threshold:
+            prev_y_center = sum(e['center_y'] for e in current_line) / len(current_line)
+            avg_height = sum(e['height'] for e in current_line) / len(current_line)
+            threshold = max(self.line_threshold_min, avg_height * self.line_threshold_mult)
+
+            if abs(elem['center_y'] - prev_y_center) <= threshold:
                 current_line.append(elem)
             else:
                 current_line.sort(key=lambda x: x['x'])
                 lines.append(current_line)
                 current_line = [elem]
-        
+
         if current_line:
             current_line.sort(key=lambda x: x['x'])
             lines.append(current_line)
-        
+
         return lines
     
     def prepare_training_data(self, annotated_data: List[Dict]) -> Tuple[pd.DataFrame, np.ndarray]:
@@ -285,8 +420,10 @@ class MLReceiptParser:
             texts = ocr_result.get('rec_texts', [])
             boxes = ocr_result.get('rec_boxes', [])
             scores = ocr_result.get('rec_scores', [])
+            image_width = ocr_result.get('image_width', [])
+            image_height = ocr_result.get('image_height', [])
             
-            elements = self._prepare_elements(texts, boxes, scores)
+            elements = self._prepare_elements(texts, boxes, scores, image_width, image_height)
             elements.sort(key=lambda x: x['y'])
             lines = self._group_into_lines(elements)
             
@@ -385,12 +522,14 @@ class MLReceiptParser:
         texts = ocr_result.get('rec_texts', [])
         boxes = ocr_result.get('rec_boxes', [])
         scores = ocr_result.get('rec_scores', [])
+        image_width = ocr_result.get('image_width', [])
+        image_height = ocr_result.get('image_height', [])
         
         if self.verbose:
             print(f"[DEBUG] predict_elements called")
             print(f"[DEBUG] texts: {len(texts)}, boxes: {len(boxes)}, scores: {len(scores)}")
-        
-        elements = self._prepare_elements(texts, boxes, scores)
+
+        elements = self._prepare_elements(texts, boxes, scores, image_width, image_height)
         if self.verbose:
             print(f"[DEBUG] prepared elements: {len(elements)}")
         
@@ -427,9 +566,14 @@ class MLReceiptParser:
                         print(f"[DEBUG] Line {line_idx}, Elem {i}: '{elem['text']}' -> {label} ({proba:.2f})")
                 
                 except Exception as e:
-                    if self.verbose:
-                        print(f"[DEBUG] Error predicting element '{elem['text']}': {e}")
-                    continue
+                    print("="*60)
+                    print("Prediction Error")
+                    print(elem["text"])
+                    print(features)
+                    print(e)
+                    print("="*60)
+
+                    raise
         
         if self.verbose:
             print(f"[DEBUG] Total predictions: {len(predictions)}")

@@ -19,9 +19,17 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import List, Dict, Tuple
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
-from sklearn.metrics import (classification_report, confusion_matrix, 
-                             accuracy_score, precision_recall_fscore_support)
+from sklearn.model_selection import (
+    train_test_split,
+    cross_val_score,
+    GridSearchCV,
+    StratifiedKFold
+)
+from sklearn.metrics import (
+    classification_report, confusion_matrix,
+    accuracy_score,
+    precision_recall_fscore_support
+)
 from sklearn.preprocessing import LabelEncoder
 
 # Import dari ml_receipt_parser
@@ -67,7 +75,39 @@ class TrainingPipeline:
                     annotated_data = json.load(f)
                 
                 # Validate structure
-                if 'ocr_result' in annotated_data and 'annotations' in annotated_data:
+                if "ocr_result" in annotated_data and "annotations" in annotated_data:
+
+                    ocr_result = annotated_data["ocr_result"]
+                    required_fields = [
+                        "rec_texts",
+                        "rec_boxes",
+                        "rec_scores",
+                        "image_width",
+                        "image_height"
+                    ]
+
+                    missing = [
+                        field
+                        for field in required_fields
+                        if field not in ocr_result
+                    ]
+
+                    if missing:
+                        print(f"✗ {filename}: missing {', '.join(missing)}")
+                        continue
+
+                    # Annotation validation check
+                    total_elements = len(ocr_result["rec_texts"])
+                    total_annotations = len(annotated_data["annotations"])
+
+                    if total_elements != total_annotations:
+                        print(
+                            f"⚠ {filename}: "
+                            f"{total_annotations}/{total_elements} annotated "
+                            f"(Skipped)"
+                        )
+                        continue
+
                     data.append(annotated_data)
                     print(f"✓ Loaded: {filename}")
                 else:
@@ -254,8 +294,19 @@ class TrainingPipeline:
         print(f"CROSS-VALIDATION ({cv}-fold)")
         print('='*60)
         
+        cv_strategy = StratifiedKFold(
+            n_splits=cv,
+            shuffle=True,
+            random_state=42
+        )
+
         scores = cross_val_score(
-            self.parser.model, X, y, cv=cv, scoring='accuracy', n_jobs=-1
+            self.parser.model,
+            X,
+            y,
+            cv=cv_strategy,
+            scoring="accuracy",
+            n_jobs=-1
         )
         
         print(f"\nCross-validation scores: {scores}")

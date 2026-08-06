@@ -6,6 +6,8 @@ Versi ini sudah mendukung CORS agar bisa dipanggil langsung dari website (JS fet
 import os
 import json
 import base64
+import tempfile
+import shutil
 import numpy as np
 import cv2
 from flask import Flask, request, jsonify
@@ -94,16 +96,37 @@ def extract_ocr_result(predict_results, source_name: str):
     return ocr_result
 
 
-def run_pipeline(img, source_name: str):
-    """Jalankan OCR + ML parsing untuk satu gambar (numpy array BGR)."""
-    predict_results = ocr.predict(img)
+def run_pipeline(image_path: str, source_name: str):
+    """
+    Jalankan OCR + ML parsing untuk satu gambar.
+
+    PENTING: OCR dijalankan dari FILE PATH (bukan numpy array langsung),
+    persis seperti app.py (ReceiptInferenceApp) yang sudah terbukti jalan.
+    Sebelumnya versi ini memanggil ocr.predict(img_array) dan itu yang
+    menyebabkan PaddleOCR tidak mendeteksi teks sama sekali (0 elemen)
+    walaupun gambarnya identik.
+    """
+    # Baca ulang gambar dari disk hanya untuk ambil width/height (sama seperti app.py)
+    img = cv2.imread(image_path)
+    if img is None:
+        return {"success": False, "error": "Invalid image file format"}, 400
+
+    image_height, image_width = img.shape[:2]
+
+    predict_results = ocr.predict(image_path)
     ocr_result = extract_ocr_result(predict_results, source_name)
 
+    # Cek validitas SEBELUM mengakses ocr_result sebagai dict (hindari crash kalau None)
     if ocr_result is None or "rec_texts" not in ocr_result:
         return {
             "success": False,
             "error": "Cannot extract OCR data from internal result object",
         }, 500
+
+    ocr_result["image_width"] = image_width
+    ocr_result["image_height"] = image_height
+
+    print(f"[DEBUG] OCR mendeteksi {len(ocr_result.get('rec_texts', []))} elemen teks dari '{source_name}'")
 
     parsed_result = receipt_parser.parse(ocr_result)
 
@@ -133,9 +156,14 @@ def parse_receipt():
     Mendukung DUA cara kirim gambar:
     1. multipart/form-data dengan key 'image'  (form upload biasa dari HTML <form>)
     2. application/json dengan key 'image_base64' (kalau website kirim base64 string)
+
+    Gambar disimpan dulu sebagai file sementara di disk lalu dibaca via path,
+    supaya PaddleOCR memprosesnya persis seperti pada app.py (CLI) yang sudah
+    terbukti berhasil mendeteksi teks.
     """
+    tmp_dir = None
     try:
-        img = None
+        file_bytes_raw = None
         source_name = "upload.jpg"
 
         # --- Cara 1: multipart/form-data ---
@@ -145,8 +173,7 @@ def parse_receipt():
                 return jsonify({"success": False, "error": "No file selected"}), 400
 
             source_name = file.filename
-            file_bytes = np.frombuffer(file.read(), np.uint8)
-            img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+            file_bytes_raw = file.read()
 
         # --- Cara 2: JSON base64 ---
         elif request.is_json:
@@ -163,8 +190,7 @@ def parse_receipt():
             if "," in b64_data:
                 b64_data = b64_data.split(",", 1)[1]
 
-            file_bytes = np.frombuffer(base64.b64decode(b64_data), np.uint8)
-            img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+            file_bytes_raw = base64.b64decode(b64_data)
             source_name = body.get("filename", "upload.jpg")
 
         else:
@@ -173,10 +199,23 @@ def parse_receipt():
                 "error": "Kirim gambar via form-data (key: 'image') atau JSON (key: 'image_base64')"
             }), 400
 
-        if img is None:
+        if not file_bytes_raw:
             return jsonify({"success": False, "error": "Invalid image file format"}), 400
 
-        payload, status_code = run_pipeline(img, source_name)
+        # Validasi cepat bahwa bytes-nya memang gambar yang bisa didecode
+        quick_check = cv2.imdecode(np.frombuffer(file_bytes_raw, np.uint8), cv2.IMREAD_COLOR)
+        if quick_check is None:
+            return jsonify({"success": False, "error": "Invalid image file format"}), 400
+
+        # Simpan RAW bytes (bukan hasil decode ulang) ke file sementara,
+        # supaya identik dengan file yang dipakai app.py
+        tmp_dir = tempfile.mkdtemp(prefix="receipt_upload_")
+        ext = os.path.splitext(source_name)[1] or ".jpg"
+        tmp_path = os.path.join(tmp_dir, f"upload{ext}")
+        with open(tmp_path, "wb") as f:
+            f.write(file_bytes_raw)
+
+        payload, status_code = run_pipeline(tmp_path, source_name)
         return jsonify(payload), status_code
 
     except Exception as e:
@@ -187,8 +226,11 @@ def parse_receipt():
             "traceback": traceback.format_exc()
         }), 500
 
+    finally:
+        if tmp_dir and os.path.isdir(tmp_dir):
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
 
 if __name__ == "__main__":
     # host="0.0.0.0" supaya bisa diakses dari device lain di jaringan yang sama, bukan cuma localhost
     app.run(host="0.0.0.0", port=5000, debug=False)
-    

@@ -37,6 +37,8 @@ class AnnotationTool:
         
         texts = ocr_result.get('rec_texts', [])
         boxes = ocr_result.get('rec_boxes', [])
+        image_width = ocr_result.get("image_width", 0)
+        image_height = ocr_result.get("image_height", 0)
         
         if not texts:
             print(f"{Fore.RED}Error: No text found in OCR result")
@@ -44,6 +46,7 @@ class AnnotationTool:
         
         print(f"\n{Back.BLUE}{Fore.WHITE} ANNOTATION TOOL {Style.RESET_ALL}")
         print(f"File: {ocr_file}")
+        print(f"Image Size : {image_width} x {image_height}")
         print(f"Total elements: {len(texts)}\n")
         print("Labels:")
         print(f"  {Fore.GREEN}1{Style.RESET_ALL} = item_name (nama produk)")
@@ -53,17 +56,65 @@ class AnnotationTool:
         print(f"\nCommands: {Fore.MAGENTA}s{Style.RESET_ALL}=save, {Fore.MAGENTA}q{Style.RESET_ALL}=quit, {Fore.MAGENTA}u{Style.RESET_ALL}=undo\n")
         print("="*60)
         
-        annotations = []
-        history = []  # untuk undo
-        
-        i = 0
+        history = []
+
+        # Resume annotation jika file sudah ada
+        if os.path.exists(output_file):
+            with open(output_file, "r", encoding="utf-8") as f:
+                saved_data = json.load(f)
+
+            annotations = saved_data.get("annotations", [])
+            if annotations:
+                i = max(a["index"] for a in annotations) + 1
+            else:
+                i = 0
+
+        else:
+            annotations = []
+            i = 0
+
+        if i >= len(texts):
+            print(
+                f"{Fore.GREEN}"
+                "This file has already been fully annotated."
+                f"{Style.RESET_ALL}"
+            )
+            return
+
+        print(
+            f"{Fore.CYAN}"
+            f"Progress : {len(annotations)}/{len(texts)} "
+            f"({len(annotations)/len(texts)*100:.1f}%)"
+            f"{Style.RESET_ALL}"
+        )
+
+        if len(annotations) > 0:
+            print(
+                f"{Fore.YELLOW}"
+                f"Resume annotation from element {i+1}"
+                f"{Style.RESET_ALL}"
+            )
+
         while i < len(texts):
             text = texts[i]
-            box = boxes[i] if i < len(boxes) else [0, 0, 0, 0]
+            box  = boxes[i] if i < len(boxes) else [0, 0, 0, 0]
+            x    = box[0]
+            y    = box[1]
+            w    = box[2] - box[0]
+            h    = box[3] - box[1]
             
             # Display current element
             print(f"\n[{i+1}/{len(texts)}] {Fore.WHITE}{Style.BRIGHT}{text}{Style.RESET_ALL}")
-            print(f"Position: x={box[0]}, y={box[1]}, w={box[2]-box[0]}, h={box[3]-box[1]}")
+            print(f"Position : x={x}, y={y}, w={w}, h={h}")
+
+            if image_width > 0 and image_height > 0:
+                print(
+                    f"Relative : "
+                    f"x={x/image_width:.3f}, "
+                    f"y={y/image_height:.3f}, "
+                    f"w={w/image_width:.3f}, "
+                    f"h={h/image_height:.3f}"
+                )
             
             # Show context (previous & next)
             if i > 0:
@@ -75,13 +126,14 @@ class AnnotationTool:
             label_input = input(f"\nLabel (1-4 / s / q / u): ").strip().lower()
             
             if label_input == 'q':
-                print(f"\n{Fore.RED}Annotation cancelled{Style.RESET_ALL}")
-                return
+                self._save_annotations(ocr_result, annotations, output_file)
+                print(f"\n{Fore.GREEN}Progress saved. Exiting annotation.{Style.RESET_ALL}")
+                return False
             
             elif label_input == 's':
                 self._save_annotations(ocr_result, annotations, output_file)
                 print(f"\n{Fore.GREEN}Saved! Continue annotating...{Style.RESET_ALL}")
-                i += 1
+                # i += 1
                 continue
             
             elif label_input == 'u':
@@ -125,6 +177,7 @@ class AnnotationTool:
         print(f"Annotation completed! ✅")
         print(f"Saved to: {output_file}")
         print(f"{'='*60}{Style.RESET_ALL}")
+        return True
     
     def _save_annotations(self, ocr_result: Dict, annotations: List[Dict], output_file: str):
         """Save annotations to JSON file"""
@@ -185,6 +238,8 @@ class BatchAnnotator:
         print(f"\n{Back.GREEN}{Fore.BLACK} BATCH ANNOTATION {Style.RESET_ALL}")
         print(f"Found {len(json_files)} files in {ocr_dir}")
         print(f"Output directory: {output_dir}\n")
+
+        stopped = False
         
         for i, filename in enumerate(json_files, 1):
             print(f"\n{Fore.CYAN}{'='*60}")
@@ -196,13 +251,32 @@ class BatchAnnotator:
             
             # Check if already annotated
             if os.path.exists(output_file):
-                skip = input(f"{Fore.YELLOW}File already annotated. Skip? (y/n): {Style.RESET_ALL}").lower()
-                if skip == 'y':
-                    print(f"{Fore.YELLOW}Skipped{Style.RESET_ALL}")
+                # Load annotation yang sudah ada
+                with open(output_file, "r", encoding="utf-8") as f:
+                    saved_data = json.load(f)
+
+                annotations = saved_data.get("annotations", [])
+
+                # Load OCR untuk mengetahui total elemen
+                with open(ocr_file, "r", encoding="utf-8") as f:
+                    ocr_data = json.load(f)
+
+                total_elements = len(ocr_data.get("rec_texts", []))
+
+                # Jika sudah selesai, skip otomatis
+                if len(annotations) >= total_elements:
+                    print(f"{Fore.GREEN}File '{filename}' has already been fully annotated.{Style.RESET_ALL}")
                     continue
+
+                # Jika belum selesai, lanjut otomatis
+                print(f"{Fore.CYAN}Resuming {filename}{Style.RESET_ALL}")
             
             try:
-                self.tool.annotate_receipt(ocr_file, output_file)
+                result = self.tool.annotate_receipt(ocr_file, output_file)
+                if result is False:
+                    stopped = True
+                    print(f"{Fore.YELLOW}Batch annotation stopped.{Style.RESET_ALL}")
+                    break
             except KeyboardInterrupt:
                 print(f"\n{Fore.RED}Batch annotation interrupted{Style.RESET_ALL}")
                 break
@@ -210,7 +284,8 @@ class BatchAnnotator:
                 print(f"{Fore.RED}Error processing {filename}: {e}{Style.RESET_ALL}")
                 continue
         
-        print(f"\n{Fore.GREEN}Batch annotation completed!{Style.RESET_ALL}")
+        if not stopped:
+            print(f"\n{Fore.GREEN}Batch annotation completed!{Style.RESET_ALL}")
 
 
 # ============================================================================
